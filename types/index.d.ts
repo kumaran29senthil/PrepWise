@@ -1,6 +1,7 @@
 interface Feedback {
   id: string;
   interviewId: string;
+  userId: string;
   totalScore: number;
   categoryScores: Array<{
     name: string;
@@ -23,6 +24,7 @@ interface Interview {
   userId: string;
   type: string;
   finalized: boolean;
+  coverImage?: string;
 }
 
 interface CreateFeedbackParams {
@@ -36,6 +38,7 @@ interface User {
   name: string;
   email: string;
   id: string;
+  isAdmin?: boolean;
 }
 
 interface InterviewCardProps {
@@ -45,6 +48,7 @@ interface InterviewCardProps {
   type: string;
   techstack: string[];
   createdAt?: string;
+  coverImage?: string;
 }
 
 interface AgentProps {
@@ -80,7 +84,6 @@ interface SignUpParams {
   uid: string;
   name: string;
   email: string;
-  password: string;
 }
 
 type FormType = "sign-in" | "sign-up";
@@ -96,4 +99,53 @@ interface InterviewFormProps {
 
 interface TechIconProps {
   techStack: string[];
+}
+
+// ─── Admin Types ───────────────────────────────────
+
+interface AdminStats {
+  totalUsers: number;
+  totalInterviews: number;
+  totalFeedbacks: number;
+  averageScore: number;
+}
+
+interface AdminUserRow {
+  id: string;
+  name: string;
+  email: string;
+  isAdmin: boolean;
+  interviewCount: number;
+  avgScore: number;
+}
+
+interface AdminInterviewRow {
+  id: string;
+  role: string;
+  type: string;
+  level: string;
+  techstack: string[];
+  userId: string;
+  userName: string;
+  createdAt: string;
+  score: number | null;
+  finalized: boolean;
+}
+
+// ─── User Analytics Types ──────────────────────────
+
+interface UserAnalytics {
+  totalInterviews: number;
+  averageScore: number;
+  bestCategory: string;
+  latestScore: number | null;
+  categoryAverages: Array<{
+    name: string;
+    avgScore: number;
+  }>;
+  recentScores: Array<{
+    date: string;
+    score: number;
+    role: string;
+  }>;
 }

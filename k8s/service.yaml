@@ -1,0 +1,19 @@
+# ============================================
+# PrepWise — Kubernetes Service
+# ============================================
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: prepwise-service
+  labels:
+    app: prepwise
+spec:
+  type: LoadBalancer
+  selector:
+    app: prepwise
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 3000
+      name: http

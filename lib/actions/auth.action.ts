@@ -41,8 +41,6 @@ export async function signUp(params: SignUpParams) {
     await db.collection("users").doc(uid).set({
       name,
       email,
-      // profileURL,
-      // resumeURL,
     });
 
     return {
@@ -80,7 +78,7 @@ export async function signIn(params: SignInParams) {
 
     await setSessionCookie(idToken);
   } catch (error: any) {
-    console.log("");
+    console.error("Sign in error:", error);
 
     return {
       success: false,
@@ -92,7 +90,6 @@ export async function signIn(params: SignInParams) {
 // Sign out user by clearing the session cookie
 export async function signOut() {
   const cookieStore = await cookies();
-
   cookieStore.delete("session");
 }
 
@@ -111,16 +108,31 @@ export async function getCurrentUser(): Promise<User | null> {
       .collection("users")
       .doc(decodedClaims.uid)
       .get();
-    if (!userRecord.exists) return null;
 
+    // If user doc doesn't exist in Firestore but session is valid,
+    // auto-create it from Firebase Auth to prevent redirect loops
+    if (!userRecord.exists) {
+      const firebaseUser = await auth.getUser(decodedClaims.uid);
+      const newUserData = {
+        name:
+          firebaseUser.displayName ||
+          firebaseUser.email?.split("@")[0] ||
+          "User",
+        email: firebaseUser.email || "",
+      };
+      await db.collection("users").doc(decodedClaims.uid).set(newUserData);
+      return { ...newUserData, id: decodedClaims.uid } as User;
+    }
+
+    const data = userRecord.data();
     return {
-      ...userRecord.data(),
+      name: data?.name,
+      email: data?.email,
       id: userRecord.id,
+      isAdmin: data?.isAdmin || false,
     } as User;
   } catch (error) {
-    console.log(error);
-
-    // Invalid or expired session
+    console.error("getCurrentUser error:", error);
     return null;
   }
 }
@@ -129,4 +141,75 @@ export async function getCurrentUser(): Promise<User | null> {
 export async function isAuthenticated() {
   const user = await getCurrentUser();
   return !!user;
+}
+
+// ─── Admin Functions ────────────────────────────────────
+
+// Get all users (admin only)
+export async function getAllUsers(): Promise<AdminUserRow[]> {
+  const currentUser = await getCurrentUser();
+  if (!currentUser?.isAdmin) return [];
+
+  // Batch-fetch everything in parallel (avoids N+1 per-user queries)
+  const [usersSnapshot, allInterviewsSnap, allFeedbackSnap] = await Promise.all([
+    db.collection("users").get(),
+    db.collection("interviews").get(),
+    db.collection("feedback").get(),
+  ]);
+
+  // Build per-user interview count map
+  const interviewCountMap = new Map<string, number>();
+  allInterviewsSnap.docs.forEach((doc) => {
+    const uid = doc.data().userId;
+    if (uid) interviewCountMap.set(uid, (interviewCountMap.get(uid) || 0) + 1);
+  });
+
+  // Build per-user score aggregation map
+  const scoreMap = new Map<string, { total: number; count: number }>();
+  allFeedbackSnap.docs.forEach((doc) => {
+    const data = doc.data();
+    const uid = data.userId;
+    if (uid) {
+      const existing = scoreMap.get(uid) || { total: 0, count: 0 };
+      existing.total += data.totalScore || 0;
+      existing.count += 1;
+      scoreMap.set(uid, existing);
+    }
+  });
+
+  const users: AdminUserRow[] = usersSnapshot.docs.map((doc) => {
+    const data = doc.data();
+    const userId = doc.id;
+    const scores = scoreMap.get(userId);
+
+    return {
+      id: userId,
+      name: data.name || "Unknown",
+      email: data.email || "",
+      isAdmin: data.isAdmin || false,
+      interviewCount: interviewCountMap.get(userId) || 0,
+      avgScore: scores ? Math.round(scores.total / scores.count) : 0,
+    };
+  });
+
+  return users;
+}
+
+// Toggle admin status (admin only)
+export async function toggleUserAdmin(userId: string, isAdmin: boolean) {
+  const currentUser = await getCurrentUser();
+  if (!currentUser?.isAdmin) return { success: false, error: "Unauthorized" };
+
+  // Prevent removing your own admin status
+  if (currentUser.id === userId && !isAdmin) {
+    return { success: false, error: "Cannot remove your own admin status" };
+  }
+
+  try {
+    await db.collection("users").doc(userId).update({ isAdmin });
+    return { success: true };
+  } catch (error) {
+    console.error("Error toggling admin:", error);
+    return { success: false, error: "Failed to update user" };
+  }
 }

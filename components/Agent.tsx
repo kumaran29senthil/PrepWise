@@ -1,25 +1,14 @@
 "use client";
 
 import Image from "next/image";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 
 import { cn } from "@/lib/utils";
-import { vapi } from "@/lib/vapi.sdk";
 import { interviewer } from "@/constants";
 import { createFeedback } from "@/lib/actions/general.action";
-
-enum CallStatus {
-  INACTIVE = "INACTIVE",
-  CONNECTING = "CONNECTING",
-  ACTIVE = "ACTIVE",
-  FINISHED = "FINISHED",
-}
-
-interface SavedMessage {
-  role: "user" | "system" | "assistant";
-  content: string;
-}
+import { useVapiCall, CallStatus } from "@/hooks/useVapiCall";
 
 const Agent = ({
   userName,
@@ -30,95 +19,75 @@ const Agent = ({
   questions,
 }: AgentProps) => {
   const router = useRouter();
-  const [callStatus, setCallStatus] = useState<CallStatus>(CallStatus.INACTIVE);
-  const [messages, setMessages] = useState<SavedMessage[]>([]);
-  const [isSpeaking, setIsSpeaking] = useState(false);
-  const [lastMessage, setLastMessage] = useState<string>("");
+  const {
+    callStatus,
+    messages,
+    isSpeaking,
+    lastMessage,
+    callError,
+    startCall,
+    endCall,
+  } = useVapiCall();
+  const [isGeneratingFeedback, setIsGeneratingFeedback] = useState(false);
 
+  // Use a ref to always have the latest messages when the effect fires
+  const messagesRef = useRef(messages);
   useEffect(() => {
-    const onCallStart = () => {
-      setCallStatus(CallStatus.ACTIVE);
-    };
+    messagesRef.current = messages;
+  }, [messages]);
 
-    const onCallEnd = () => {
-      setCallStatus(CallStatus.FINISHED);
-    };
-
-    const onMessage = (message: Message) => {
-      if (message.type === "transcript" && message.transcriptType === "final") {
-        const newMessage = { role: message.role, content: message.transcript };
-        setMessages((prev) => [...prev, newMessage]);
-      }
-    };
-
-    const onSpeechStart = () => {
-      console.log("speech start");
-      setIsSpeaking(true);
-    };
-
-    const onSpeechEnd = () => {
-      console.log("speech end");
-      setIsSpeaking(false);
-    };
-
-    const onError = (error: Error) => {
-      console.log("Error:", error);
-    };
-
-    vapi.on("call-start", onCallStart);
-    vapi.on("call-end", onCallEnd);
-    vapi.on("message", onMessage);
-    vapi.on("speech-start", onSpeechStart);
-    vapi.on("speech-end", onSpeechEnd);
-    vapi.on("error", onError);
-
-    return () => {
-      vapi.off("call-start", onCallStart);
-      vapi.off("call-end", onCallEnd);
-      vapi.off("message", onMessage);
-      vapi.off("speech-start", onSpeechStart);
-      vapi.off("speech-end", onSpeechEnd);
-      vapi.off("error", onError);
-    };
-  }, []);
-
+  // Handle post-call logic (feedback generation or redirect)
   useEffect(() => {
-    if (messages.length > 0) {
-      setLastMessage(messages[messages.length - 1].content);
-    }
-
-    const handleGenerateFeedback = async (messages: SavedMessage[]) => {
-      console.log("handleGenerateFeedback");
-
-      const { success, feedbackId: id } = await createFeedback({
-        interviewId: interviewId!,
-        userId: userId!,
-        transcript: messages,
-        feedbackId,
-      });
-
-      if (success && id) {
-        router.push(`/interview/${interviewId}/feedback`);
-      } else {
-        console.log("Error saving feedback");
-        router.push("/");
-      }
-    };
-
-    if (callStatus === CallStatus.FINISHED) {
-      if (type === "generate") {
-        router.push("/");
-      } else {
-        handleGenerateFeedback(messages);
-      }
-    }
-  }, [messages, callStatus, feedbackId, interviewId, router, type, userId]);
-
-  const handleCall = async () => {
-    setCallStatus(CallStatus.CONNECTING);
+    if (callStatus !== CallStatus.FINISHED) return;
+    if (isGeneratingFeedback) return; // prevent double-fire
 
     if (type === "generate") {
-      await vapi.start(process.env.NEXT_PUBLIC_VAPI_ASSISTANT_ID!, {
+      router.push("/");
+      return;
+    }
+
+    // Generate feedback from the transcript
+    const handleGenerateFeedback = async () => {
+      const currentMessages = messagesRef.current;
+
+      if (!currentMessages || currentMessages.length === 0) {
+        toast.error(
+          "No conversation was recorded. Please try the interview again."
+        );
+        router.push("/");
+        return;
+      }
+
+      setIsGeneratingFeedback(true);
+
+      try {
+        const result = await createFeedback({
+          interviewId: interviewId!,
+          userId: userId!,
+          transcript: currentMessages,
+          feedbackId,
+        });
+
+        if (result.success && result.feedbackId) {
+          router.push(`/interview/${interviewId}/feedback`);
+        } else {
+          toast.error("Failed to generate feedback. Please try again.");
+          router.push("/");
+        }
+      } catch (error) {
+        console.error("Feedback generation threw error:", error);
+        toast.error("Something went wrong. Please try again.");
+        router.push("/");
+      }
+    };
+
+    handleGenerateFeedback();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [callStatus]);
+
+  const handleCall = async () => {
+    if (type === "generate") {
+      await startCall(process.env.NEXT_PUBLIC_VAPI_ASSISTANT_ID!, {
         variableValues: {
           username: userName,
           userid: userId,
@@ -132,7 +101,7 @@ const Agent = ({
           .join("\n");
       }
 
-      await vapi.start(interviewer, {
+      await startCall(interviewer, {
         variableValues: {
           questions: formattedQuestions,
         },
@@ -140,10 +109,46 @@ const Agent = ({
     }
   };
 
-  const handleDisconnect = () => {
-    setCallStatus(CallStatus.FINISHED);
-    vapi.stop();
-  };
+  // Show feedback loading state
+  if (isGeneratingFeedback) {
+    return (
+      <div className="flex flex-col items-center justify-center gap-4 py-20">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-200" />
+        <h3>Generating your feedback...</h3>
+        <p className="text-gray-400 text-sm">
+          Our AI is analyzing your interview. This may take a moment.
+        </p>
+      </div>
+    );
+  }
+
+  // Show error state when Vapi call fails
+  if (callStatus === CallStatus.ERROR) {
+    return (
+      <div className="flex flex-col items-center justify-center gap-4 py-20">
+        <div className="text-center">
+          <h3 className="text-xl font-semibold text-red-400 mb-2">
+            Call Failed
+          </h3>
+          <p className="text-gray-400 text-sm max-w-md">
+            {callError ||
+              "The voice call could not be completed. This usually happens when Vapi credits are exhausted."}
+          </p>
+        </div>
+        <div className="flex gap-3">
+          <button className="btn-primary px-6 py-2" onClick={() => handleCall()}>
+            Try Again
+          </button>
+          <button
+            className="btn-secondary px-6 py-2"
+            onClick={() => router.push("/")}
+          >
+            Back to Dashboard
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <>
@@ -211,7 +216,7 @@ const Agent = ({
             </span>
           </button>
         ) : (
-          <button className="btn-disconnect" onClick={() => handleDisconnect()}>
+          <button className="btn-disconnect" onClick={() => endCall()}>
             End
           </button>
         )}
@@ -221,3 +226,4 @@ const Agent = ({
 };
 
 export default Agent;
+

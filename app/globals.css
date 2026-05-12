@@ -332,3 +332,29 @@
     transform: translateY(0);
   }
 }
+
+@utility glass-card {
+  @apply backdrop-blur-md bg-white/[0.03];
+}
+
+@layer components {
+  .admin-layout {
+    @apply flex flex-col gap-6;
+  }
+
+  .admin-table {
+    @apply w-full text-sm;
+
+    th {
+      @apply text-left text-xs uppercase tracking-wider text-light-400 pb-3 border-b border-white/5 px-3 font-medium;
+    }
+
+    td {
+      @apply py-3 px-3 border-b border-white/[0.03];
+    }
+
+    tr {
+      @apply transition-colors hover:bg-white/[0.02];
+    }
+  }
+}
