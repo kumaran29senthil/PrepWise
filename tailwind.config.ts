@@ -1,22 +1,14 @@
-import type { Config } from 'tailwindcss';
+import type { Config } from "tailwindcss";
 
 const config: Config = {
-  darkMode: 'class', // <-- Add this line
   content: [
-    './app/**/*.{ts,tsx,js,jsx,mdx}', // <-- Made this more robust
-    './pages/**/*.{ts,tsx,js,jsx,mdx}',
-    './components/**/*.{ts,tsx,js,jsx,mdx}',
+    "./pages/**/*.{js,ts,jsx,tsx,mdx}",
+    "./components/**/*.{js,ts,jsx,tsx,mdx}",
+    "./app/**/*.{js,ts,jsx,tsx,mdx}",
   ],
   theme: {
-    extend: {
-      backgroundImage: {
-        'radial-ellipse-top-left': 'radial-gradient(ellipse at top left, var(--tw-gradient-stops))',
-      },
-    },
+    extend: {},
   },
-  safelist: [
-    'bg-[radial-gradient(ellipse_at_top_left,_var(--tw-gradient-stops))]',
-  ],
   plugins: [],
 };
 
