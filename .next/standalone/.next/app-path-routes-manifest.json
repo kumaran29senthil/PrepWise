@@ -1,12 +1,12 @@
 {
-  "/_not-found/page": "/_not-found",
   "/api/vapi/generate/route": "/api/vapi/generate",
   "/favicon.ico/route": "/favicon.ico",
-  "/(auth)/sign-in/page": "/sign-in",
-  "/(root)/interview/[id]/feedback/page": "/interview/[id]/feedback",
+  "/_not-found/page": "/_not-found",
   "/(auth)/sign-up/page": "/sign-up",
   "/(root)/interview/page": "/interview",
   "/(root)/interview/[id]/page": "/interview/[id]",
+  "/(auth)/sign-in/page": "/sign-in",
+  "/(root)/interview/[id]/feedback/page": "/interview/[id]/feedback",
   "/(root)/page": "/",
   "/(root)/admin/page": "/admin"
 }
